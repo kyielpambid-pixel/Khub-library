@@ -49,8 +49,7 @@ Khub UI Library includes a complete set of UI elements:
 **Load the library:**
 
 ```lua
-local KHUB = loadstring(game:HttpGet("https://raw.githubusercontent.com/kyielpambid-pixel/Khub-library/refs/heads/main/Khub-library"))()
-```
+local KHUB = loadstring(game:HttpGet("https://raw.githubusercontent.com/kyielpambid-pixel/Khub-library/refs/heads/main/Khub-library"))()```
 
 Create a window:
 

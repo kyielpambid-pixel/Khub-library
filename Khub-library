@@ -1,0 +1,1150 @@
+--[[
+	KHUB UI Library v1.0
+	Premium reusable UI for GitHub
+
+	Features:
+	- Violet pulsing logo glow (loop)
+	- Green instruction box per tab (skip Welcome + Config)
+	- Violet toast popups on toggle/button (ON / OFF)
+	- Floating orb + orbiting chain effect
+	- Scrollable sidebar tabs with icons
+	- MM2-style Save Config (create / select / load / delete)
+	- Oil Tycoon background support
+
+	Load:
+	  local KHUB = loadstring(game:HttpGet("YOUR_GITHUB_RAW_URL"))()
+]]
+
+local Players           = game:GetService("Players")
+local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local HttpService       = game:GetService("HttpService")
+local CoreGui           = game:GetService("CoreGui")
+local player            = Players.LocalPlayer
+
+local KHUB = {}
+KHUB.__index = KHUB
+KHUB.Version = "1.0.0"
+
+--==============================================================
+-- THEME
+--==============================================================
+local THEME = {
+	bg       = Color3.fromRGB(8, 10, 18),
+	title    = Color3.fromRGB(12, 14, 24),
+	sidebar  = Color3.fromRGB(6, 8, 16),
+	card     = Color3.fromRGB(16, 20, 36),
+	element  = Color3.fromRGB(18, 22, 40),
+	accent   = Color3.fromRGB(160, 90, 255),   -- violet
+	accent2  = Color3.fromRGB(120, 60, 220),
+	green    = Color3.fromRGB(80, 220, 140),
+	gold     = Color3.fromRGB(255, 216, 140),
+	text     = Color3.fromRGB(238, 242, 255),
+	dim      = Color3.fromRGB(150, 160, 205),
+	mute     = Color3.fromRGB(100, 112, 158),
+	stroke   = Color3.fromRGB(100, 70, 180),
+	red      = Color3.fromRGB(255, 100, 120),
+	off      = Color3.fromRGB(38, 44, 70),
+}
+
+--==============================================================
+-- BUILT-IN ICON MAP (Lucide-style names → rbxassetid)
+-- Add more via KHUB.Icons["name"] = "rbxassetid://..."
+--==============================================================
+KHUB.Icons = {
+	-- general
+	home        = "rbxassetid://6031097226",
+	settings    = "rbxassetid://6031280882",
+	save        = "rbxassetid://6031260796",
+	user        = "rbxassetid://6034287594",
+	star        = "rbxassetid://6031260791",
+	info        = "rbxassetid://6031071053",
+	search      = "rbxassetid://6031104648",
+	close       = "rbxassetid://6031094678",
+	-- combat / game
+	sword       = "rbxassetid://6034509993",
+	target      = "rbxassetid://6034684930",
+	shield      = "rbxassetid://6031280882",
+	bolt        = "rbxassetid://6031071053",
+	flame       = "rbxassetid://6034509993",
+	eye         = "rbxassetid://6031071053",
+	ghost       = "rbxassetid://6034287594",
+	navigation  = "rbxassetid://6031097226",
+	box         = "rbxassetid://6031260796",
+	zap         = "rbxassetid://6031071053",
+	heart       = "rbxassetid://6031071053",
+	-- misc
+	player      = "rbxassetid://6034287594",
+	server      = "rbxassetid://6031280882",
+	config      = "rbxassetid://6031260796",
+	farm        = "rbxassetid://6034509993",
+	egg         = "rbxassetid://6031260791",
+	pet         = "rbxassetid://6034287594",
+	speed       = "rbxassetid://6031097226",
+	fly         = "rbxassetid://6031097226",
+	esp         = "rbxassetid://6031071053",
+	aimbot      = "rbxassetid://6034684930",
+	misc        = "rbxassetid://6031280882",
+	welcome     = "rbxassetid://6031097226",
+}
+
+local function resolveIcon(icon)
+	if not icon or icon == "" then return nil end
+	if typeof(icon) == "string" and icon:find("rbxassetid://") then return icon end
+	return KHUB.Icons[string.lower(tostring(icon))] or KHUB.Icons.info
+end
+
+--==============================================================
+-- HELPERS
+--==============================================================
+local function getUIParent()
+	local ok, gui = pcall(function()
+		if gethui then return gethui() end
+	end)
+	if ok and gui then return gui end
+	ok, gui = pcall(function() return CoreGui end)
+	if ok and gui then return gui end
+	return player:WaitForChild("PlayerGui")
+end
+
+local function corner(obj, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 8)
+	c.Parent = obj
+	return c
+end
+
+local function stroke(obj, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color or THEME.stroke
+	s.Thickness = thickness or 1
+	s.Transparency = transparency or 0.35
+	s.Parent = obj
+	return s
+end
+
+local function pad(obj, t, b, l, r)
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, t or 6)
+	p.PaddingBottom = UDim.new(0, b or 6)
+	p.PaddingLeft = UDim.new(0, l or 8)
+	p.PaddingRight = UDim.new(0, r or 8)
+	p.Parent = obj
+	return p
+end
+
+local function listLayout(obj, dir, padPx)
+	local l = Instance.new("UIListLayout")
+	l.FillDirection = dir or Enum.FillDirection.Vertical
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Padding = UDim.new(0, padPx or 6)
+	l.Parent = obj
+	return l
+end
+
+--==============================================================
+-- TOAST / POPUP (violet)
+--==============================================================
+local function createToastHost(parent)
+	local host = Instance.new("Frame")
+	host.Name = "KHUB_Toasts"
+	host.Size = UDim2.new(0, 280, 1, -40)
+	host.Position = UDim2.new(1, -300, 0, 20)
+	host.BackgroundTransparency = 1
+	host.ZIndex = 200
+	host.Parent = parent
+	listLayout(host, Enum.FillDirection.Vertical, 8)
+	return host
+end
+
+local function pushToast(host, title, isOn)
+	if not host then return end
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 52)
+	card.BackgroundColor3 = Color3.fromRGB(18, 12, 32)
+	card.BackgroundTransparency = 0.08
+	card.BorderSizePixel = 0
+	card.ZIndex = 201
+	card.Parent = host
+	corner(card, 10)
+	stroke(card, THEME.accent, 1.5, 0.25)
+
+	local accentBar = Instance.new("Frame")
+	accentBar.Size = UDim2.new(0, 4, 1, -12)
+	accentBar.Position = UDim2.new(0, 6, 0, 6)
+	accentBar.BackgroundColor3 = isOn and THEME.green or THEME.red
+	accentBar.BorderSizePixel = 0
+	accentBar.ZIndex = 202
+	accentBar.Parent = card
+	corner(accentBar, 2)
+
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, -24, 0, 22)
+	t.Position = UDim2.new(0, 18, 0, 6)
+	t.BackgroundTransparency = 1
+	t.Text = tostring(title)
+	t.Font = Enum.Font.GothamBold
+	t.TextSize = 13
+	t.TextColor3 = THEME.text
+	t.TextXAlignment = Enum.TextXAlignment.Left
+	t.ZIndex = 202
+	t.Parent = card
+
+	local s = Instance.new("TextLabel")
+	s.Size = UDim2.new(1, -24, 0, 18)
+	s.Position = UDim2.new(0, 18, 0, 28)
+	s.BackgroundTransparency = 1
+	s.Text = isOn and "ON" or "OFF"
+	s.Font = Enum.Font.GothamMedium
+	s.TextSize = 12
+	s.TextColor3 = isOn and THEME.green or THEME.red
+	s.TextXAlignment = Enum.TextXAlignment.Left
+	s.ZIndex = 202
+	s.Parent = card
+
+	card.BackgroundTransparency = 1
+	TweenService:Create(card, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { BackgroundTransparency = 0.08 }):Play()
+
+	task.delay(2.4, function()
+		local tw = TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
+		tw:Play()
+		tw.Completed:Wait()
+		card:Destroy()
+	end)
+end
+
+--==============================================================
+-- CREATE WINDOW
+--==============================================================
+function KHUB:CreateWindow(opts)
+	opts = opts or {}
+	local title     = opts.Title or "KHUB"
+	local subtitle  = opts.Subtitle or "by KHUB"
+	local logoId    = opts.Logo or "rbxassetid://127230219966945"
+	local bgId      = opts.Background or "rbxassetid://127230219966945"
+	local keybind   = opts.Keybind or Enum.KeyCode.RightShift
+	local folder    = opts.Folder or "KHUB_Configs"
+	local baseW     = opts.Width or 560
+	local baseH     = opts.Height or 380
+
+	local parent = getUIParent()
+	pcall(function()
+		if parent:FindFirstChild("KHUB_UI_Lib") then parent.KHUB_UI_Lib:Destroy() end
+	end)
+
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Name = "KHUB_UI_Lib"
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	ScreenGui.IgnoreGuiInset = true
+	ScreenGui.DisplayOrder = 100
+	ScreenGui.Parent = parent
+
+	local ToastHost = createToastHost(ScreenGui)
+
+	-- Main window
+	local Main = Instance.new("Frame")
+	Main.Name = "Main"
+	Main.Size = UDim2.new(0, baseW, 0, baseH)
+	Main.Position = UDim2.new(0.5, -baseW / 2, 0.5, -baseH / 2)
+	Main.BackgroundColor3 = THEME.bg
+	Main.BorderSizePixel = 0
+	Main.ClipsDescendants = true
+	Main.Active = true
+	Main.Parent = ScreenGui
+	corner(Main, 12)
+	stroke(Main, THEME.accent, 1.5, 0.4)
+
+	-- Background image
+	local BgImg = Instance.new("ImageLabel")
+	BgImg.Name = "BG"
+	BgImg.Size = UDim2.new(1, 0, 1, 0)
+	BgImg.BackgroundTransparency = 1
+	BgImg.Image = bgId
+	BgImg.ImageTransparency = 0.72
+	BgImg.ScaleType = Enum.ScaleType.Crop
+	BgImg.ZIndex = 0
+	BgImg.Parent = Main
+
+	-- Title bar
+	local TitleBar = Instance.new("Frame")
+	TitleBar.Name = "TitleBar"
+	TitleBar.Size = UDim2.new(1, 0, 0, 48)
+	TitleBar.BackgroundColor3 = THEME.title
+	TitleBar.BackgroundTransparency = 0.15
+	TitleBar.BorderSizePixel = 0
+	TitleBar.ZIndex = 2
+	TitleBar.Parent = Main
+
+	-- Logo with violet glow pulse
+	local LogoWrap = Instance.new("Frame")
+	LogoWrap.Size = UDim2.new(0, 36, 0, 36)
+	LogoWrap.Position = UDim2.new(0, 10, 0.5, -18)
+	LogoWrap.BackgroundColor3 = Color3.fromRGB(20, 12, 40)
+	LogoWrap.BorderSizePixel = 0
+	LogoWrap.ZIndex = 3
+	LogoWrap.Parent = TitleBar
+	corner(LogoWrap, 8)
+
+	local LogoGlow = Instance.new("UIStroke")
+	LogoGlow.Color = THEME.accent
+	LogoGlow.Thickness = 2
+	LogoGlow.Transparency = 0.2
+	LogoGlow.Parent = LogoWrap
+
+	local Logo = Instance.new("ImageLabel")
+	Logo.Size = UDim2.new(1, -6, 1, -6)
+	Logo.Position = UDim2.new(0, 3, 0, 3)
+	Logo.BackgroundTransparency = 1
+	Logo.Image = logoId
+	Logo.ZIndex = 4
+	Logo.Parent = LogoWrap
+	corner(Logo, 6)
+
+	-- Pulse loop: glow appear → disappear → repeat
+	task.spawn(function()
+		while LogoGlow and LogoGlow.Parent do
+			TweenService:Create(LogoGlow, TweenInfo.new(0.9, Enum.EasingStyle.Sine), {
+				Transparency = 0.05, Thickness = 3
+			}):Play()
+			task.wait(0.95)
+			TweenService:Create(LogoGlow, TweenInfo.new(0.9, Enum.EasingStyle.Sine), {
+				Transparency = 0.85, Thickness = 1.2
+			}):Play()
+			task.wait(0.95)
+		end
+	end)
+
+	local TitleLabel = Instance.new("TextLabel")
+	TitleLabel.Size = UDim2.new(1, -160, 1, 0)
+	TitleLabel.Position = UDim2.new(0, 54, 0, 0)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = title
+	TitleLabel.Font = Enum.Font.GothamBold
+	TitleLabel.TextSize = 16
+	TitleLabel.TextColor3 = THEME.text
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	TitleLabel.ZIndex = 3
+	TitleLabel.Parent = TitleBar
+
+	-- Violet gradient wash on title text (subtle)
+	local titleGrad = Instance.new("UIGradient")
+	titleGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 160, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+	})
+	titleGrad.Parent = TitleLabel
+	task.spawn(function()
+		while titleGrad and titleGrad.Parent do
+			for i = 0, 100 do
+				titleGrad.Offset = Vector2.new(-1 + i / 50, 0)
+				task.wait(0.03)
+			end
+		end
+	end)
+
+	local SubLabel = Instance.new("TextLabel")
+	SubLabel.Size = UDim2.new(0, 120, 0, 14)
+	SubLabel.Position = UDim2.new(1, -150, 0, 8)
+	SubLabel.BackgroundTransparency = 1
+	SubLabel.Text = subtitle
+	SubLabel.Font = Enum.Font.Gotham
+	SubLabel.TextSize = 10
+	SubLabel.TextColor3 = THEME.dim
+	SubLabel.TextXAlignment = Enum.TextXAlignment.Right
+	SubLabel.ZIndex = 3
+	SubLabel.Parent = TitleBar
+
+	local CloseBtn = Instance.new("TextButton")
+	CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+	CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
+	CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 40)
+	CloseBtn.Text = "×"
+	CloseBtn.Font = Enum.Font.GothamBold
+	CloseBtn.TextSize = 18
+	CloseBtn.TextColor3 = THEME.text
+	CloseBtn.ZIndex = 4
+	CloseBtn.Parent = TitleBar
+	corner(CloseBtn, 6)
+
+	local MinBtn = Instance.new("TextButton")
+	MinBtn.Size = UDim2.new(0, 28, 0, 28)
+	MinBtn.Position = UDim2.new(1, -68, 0.5, -14)
+	MinBtn.BackgroundColor3 = Color3.fromRGB(30, 24, 48)
+	MinBtn.Text = "–"
+	MinBtn.Font = Enum.Font.GothamBold
+	MinBtn.TextSize = 16
+	MinBtn.TextColor3 = THEME.text
+	MinBtn.ZIndex = 4
+	MinBtn.Parent = TitleBar
+	corner(MinBtn, 6)
+
+	-- Drag main
+	do
+		local dragging, dragStart, startPos
+		TitleBar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = Main.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				end)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local d = input.Position - dragStart
+				Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
+		end)
+	end
+
+	-- Sidebar (scrollable)
+	local SIDE_W = 118
+	local Sidebar = Instance.new("ScrollingFrame")
+	Sidebar.Name = "Sidebar"
+	Sidebar.Size = UDim2.new(0, SIDE_W, 1, -48)
+	Sidebar.Position = UDim2.new(0, 0, 0, 48)
+	Sidebar.BackgroundColor3 = THEME.sidebar
+	Sidebar.BackgroundTransparency = 0.12
+	Sidebar.BorderSizePixel = 0
+	Sidebar.ScrollBarThickness = 3
+	Sidebar.ScrollBarImageColor3 = THEME.accent
+	Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+	Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	Sidebar.ScrollingDirection = Enum.ScrollingDirection.Y
+	Sidebar.ZIndex = 2
+	Sidebar.Parent = Main
+	pad(Sidebar, 8, 8, 6, 6)
+	listLayout(Sidebar, Enum.FillDirection.Vertical, 4)
+
+	-- Content area
+	local Content = Instance.new("Frame")
+	Content.Name = "Content"
+	Content.Size = UDim2.new(1, -SIDE_W - 8, 1, -56)
+	Content.Position = UDim2.new(0, SIDE_W + 4, 0, 52)
+	Content.BackgroundTransparency = 1
+	Content.ZIndex = 2
+	Content.Parent = Main
+
+	--==========================================================
+	-- FLOATING ORB + ORBITING CHAIN
+	--==========================================================
+	local OrbRoot = Instance.new("Frame")
+	OrbRoot.Name = "OrbRoot"
+	OrbRoot.Size = UDim2.new(0, 64, 0, 64)
+	OrbRoot.Position = UDim2.new(0, 18, 0.5, -32)
+	OrbRoot.BackgroundTransparency = 1
+	OrbRoot.Visible = false
+	OrbRoot.ZIndex = 50
+	OrbRoot.Parent = ScreenGui
+
+	local Orb = Instance.new("ImageButton")
+	Orb.Name = "Orb"
+	Orb.Size = UDim2.new(0, 48, 0, 48)
+	Orb.Position = UDim2.new(0.5, -24, 0.5, -24)
+	Orb.BackgroundColor3 = Color3.fromRGB(16, 12, 28)
+	Orb.Image = logoId
+	Orb.ScaleType = Enum.ScaleType.Fit
+	Orb.ZIndex = 52
+	Orb.Parent = OrbRoot
+	corner(Orb, 24)
+	stroke(Orb, THEME.accent, 2, 0.25)
+
+	-- Orbiting chain dots
+	local chainDots = {}
+	local CHAIN_N = 8
+	for i = 1, CHAIN_N do
+		local dot = Instance.new("Frame")
+		dot.Size = UDim2.new(0, 6, 0, 6)
+		dot.BackgroundColor3 = THEME.accent
+		dot.BorderSizePixel = 0
+		dot.ZIndex = 51
+		dot.Parent = OrbRoot
+		corner(dot, 3)
+		local link = Instance.new("UIStroke")
+		link.Color = Color3.fromRGB(220, 180, 255)
+		link.Thickness = 1
+		link.Transparency = 0.3
+		link.Parent = dot
+		chainDots[i] = dot
+	end
+
+	task.spawn(function()
+		local angle = 0
+		local radius = 28
+		while OrbRoot and OrbRoot.Parent do
+			if OrbRoot.Visible then
+				angle = angle + 0.045
+				for i, dot in ipairs(chainDots) do
+					local a = angle + (i - 1) * (math.pi * 2 / CHAIN_N)
+					local x = 32 + math.cos(a) * radius - 3
+					local y = 32 + math.sin(a) * radius - 3
+					dot.Position = UDim2.new(0, x, 0, y)
+					dot.BackgroundTransparency = 0.15 + 0.35 * ((math.sin(a * 2) + 1) / 2)
+				end
+			end
+			RunService.RenderStepped:Wait()
+		end
+	end)
+
+	-- Orb drag
+	do
+		local dragging, dragStart, startPos
+		Orb.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = OrbRoot.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				end)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local d = input.Position - dragStart
+				OrbRoot.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
+		end)
+	end
+
+	local function setVisible(on)
+		Main.Visible = on
+		OrbRoot.Visible = not on
+	end
+	CloseBtn.MouseButton1Click:Connect(function() setVisible(false) end)
+	MinBtn.MouseButton1Click:Connect(function() setVisible(false) end)
+	Orb.MouseButton1Click:Connect(function() setVisible(true) end)
+
+	UserInputService.InputBegan:Connect(function(i, gp)
+		if gp then return end
+		if i.KeyCode == keybind
+			or i.KeyCode == Enum.KeyCode.RightControl
+			or i.KeyCode == Enum.KeyCode.K then
+			setVisible(not Main.Visible)
+		end
+	end)
+
+	--==========================================================
+	-- WINDOW API
+	--==========================================================
+	local Window = {
+		_tabs = {},
+		_pages = {},
+		_current = nil,
+		_tabButtons = {},
+		_configFlags = {},
+		Folder = folder,
+		ScreenGui = ScreenGui,
+		Main = Main,
+	}
+
+	function Window:Notify(title, isOn)
+		pushToast(ToastHost, title, isOn ~= false)
+	end
+
+	local function makeTabButton(name, iconName, order)
+		local btn = Instance.new("TextButton")
+		btn.Name = name
+		btn.Size = UDim2.new(1, 0, 0, 36)
+		btn.BackgroundColor3 = THEME.card
+		btn.BackgroundTransparency = 0.25
+		btn.Text = ""
+		btn.LayoutOrder = order or 0
+		btn.ZIndex = 3
+		btn.Parent = Sidebar
+		corner(btn, 8)
+		stroke(btn, THEME.stroke, 1, 0.55)
+
+		local icon = Instance.new("ImageLabel")
+		icon.Size = UDim2.new(0, 16, 0, 16)
+		icon.Position = UDim2.new(0, 8, 0.5, -8)
+		icon.BackgroundTransparency = 1
+		icon.Image = resolveIcon(iconName) or resolveIcon("info")
+		icon.ImageColor3 = THEME.dim
+		icon.ZIndex = 4
+		icon.Parent = btn
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(1, -36, 1, 0)
+		lbl.Position = UDim2.new(0, 28, 0, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = name
+		lbl.Font = Enum.Font.GothamMedium
+		lbl.TextSize = 11
+		lbl.TextColor3 = THEME.dim
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextTruncate = Enum.TextTruncate.AtEnd
+		lbl.ZIndex = 4
+		lbl.Parent = btn
+
+		-- Active white bar on right
+		local bar = Instance.new("Frame")
+		bar.Name = "ActiveBar"
+		bar.Size = UDim2.new(0, 3, 0.55, 0)
+		bar.Position = UDim2.new(1, -4, 0.225, 0)
+		bar.BackgroundColor3 = THEME.accent
+		bar.BorderSizePixel = 0
+		bar.Visible = false
+		bar.ZIndex = 5
+		bar.Parent = btn
+		corner(bar, 2)
+
+		return btn, icon, lbl, bar
+	end
+
+	local function setActiveTab(name)
+		for n, data in pairs(Window._tabButtons) do
+			local active = (n == name)
+			data.bar.Visible = active
+			data.btn.BackgroundTransparency = active and 0.05 or 0.25
+			data.lbl.TextColor3 = active and THEME.text or THEME.dim
+			data.icon.ImageColor3 = active and THEME.accent or THEME.dim
+			stroke(data.btn, active and THEME.accent or THEME.stroke, 1, active and 0.25 or 0.55)
+		end
+		for n, page in pairs(Window._pages) do
+			page.Visible = (n == name)
+		end
+		Window._current = name
+	end
+
+	function Window:CreateTab(opts)
+		opts = opts or {}
+		local name     = opts.Name or opts.Title or "Tab"
+		local icon     = opts.Icon or "info"
+		local greenTxt = opts.GreenInfo or opts.Green or opts.Info -- nil = no green box
+		local order    = opts.Order or (#Window._tabs + 1)
+		local skipGreen = opts.NoGreen
+			or string.lower(name) == "welcome"
+			or string.lower(name) == "config"
+			or string.lower(name) == "save config"
+			or string.lower(name) == "settings"
+
+		local btn, iconImg, lbl, bar = makeTabButton(name, icon, order)
+		Window._tabButtons[name] = { btn = btn, icon = iconImg, lbl = lbl, bar = bar }
+
+		local page = Instance.new("ScrollingFrame")
+		page.Name = name
+		page.Size = UDim2.new(1, -4, 1, -4)
+		page.Position = UDim2.new(0, 2, 0, 2)
+		page.BackgroundTransparency = 1
+		page.BorderSizePixel = 0
+		page.ScrollBarThickness = 4
+		page.ScrollBarImageColor3 = THEME.accent
+		page.CanvasSize = UDim2.new(0, 0, 0, 0)
+		page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		page.Visible = false
+		page.ZIndex = 3
+		page.Parent = Content
+		pad(page, 4, 12, 6, 6)
+		listLayout(page, Enum.FillDirection.Vertical, 8)
+
+		Window._pages[name] = page
+		table.insert(Window._tabs, name)
+
+		btn.MouseButton1Click:Connect(function()
+			setActiveTab(name)
+		end)
+
+		-- Green instruction box (auto, unless Welcome / Config)
+		if not skipGreen and greenTxt and greenTxt ~= "" then
+			local g = Instance.new("Frame")
+			g.Size = UDim2.new(1, 0, 0, 0)
+			g.AutomaticSize = Enum.AutomaticSize.Y
+			g.BackgroundColor3 = Color3.fromRGB(12, 40, 28)
+			g.BackgroundTransparency = 0.15
+			g.BorderSizePixel = 0
+			g.LayoutOrder = 0
+			g.ZIndex = 4
+			g.Parent = page
+			corner(g, 8)
+			stroke(g, THEME.green, 1, 0.45)
+
+			local gt = Instance.new("TextLabel")
+			gt.Size = UDim2.new(1, -16, 0, 0)
+			gt.AutomaticSize = Enum.AutomaticSize.Y
+			gt.Position = UDim2.new(0, 8, 0, 8)
+			gt.BackgroundTransparency = 1
+			gt.Text = tostring(greenTxt)
+			gt.Font = Enum.Font.Gotham
+			gt.TextSize = 12
+			gt.TextColor3 = THEME.green
+			gt.TextWrapped = true
+			gt.TextXAlignment = Enum.TextXAlignment.Left
+			gt.TextYAlignment = Enum.TextYAlignment.Top
+			gt.ZIndex = 5
+			gt.Parent = g
+			pad(g, 8, 8, 0, 0)
+		end
+
+		local Tab = { Name = name, Page = page }
+
+		local function addCard()
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, 0)
+			card.AutomaticSize = Enum.AutomaticSize.Y
+			card.BackgroundColor3 = THEME.card
+			card.BackgroundTransparency = 0.2
+			card.BorderSizePixel = 0
+			card.ZIndex = 4
+			card.Parent = page
+			corner(card, 8)
+			stroke(card, THEME.stroke, 1, 0.5)
+			pad(card, 8, 8, 10, 10)
+			listLayout(card, Enum.FillDirection.Vertical, 6)
+			return card
+		end
+
+		function Tab:Section(titleText)
+			local card = addCard()
+			if titleText then
+				local h = Instance.new("TextLabel")
+				h.Size = UDim2.new(1, 0, 0, 18)
+				h.BackgroundTransparency = 1
+				h.Text = titleText
+				h.Font = Enum.Font.GothamBold
+				h.TextSize = 12
+				h.TextColor3 = THEME.accent
+				h.TextXAlignment = Enum.TextXAlignment.Left
+				h.ZIndex = 5
+				h.Parent = card
+			end
+			return card
+		end
+
+		function Tab:Label(text)
+			local card = addCard()
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.new(1, 0, 0, 0)
+			l.AutomaticSize = Enum.AutomaticSize.Y
+			l.BackgroundTransparency = 1
+			l.Text = tostring(text)
+			l.Font = Enum.Font.Gotham
+			l.TextSize = 12
+			l.TextColor3 = THEME.text
+			l.TextWrapped = true
+			l.TextXAlignment = Enum.TextXAlignment.Left
+			l.ZIndex = 5
+			l.Parent = card
+			return l
+		end
+
+		function Tab:GreenBox(text)
+			local g = Instance.new("Frame")
+			g.Size = UDim2.new(1, 0, 0, 0)
+			g.AutomaticSize = Enum.AutomaticSize.Y
+			g.BackgroundColor3 = Color3.fromRGB(12, 40, 28)
+			g.BackgroundTransparency = 0.15
+			g.BorderSizePixel = 0
+			g.ZIndex = 4
+			g.Parent = page
+			corner(g, 8)
+			stroke(g, THEME.green, 1, 0.45)
+			pad(g, 8, 8, 10, 10)
+			local gt = Instance.new("TextLabel")
+			gt.Size = UDim2.new(1, 0, 0, 0)
+			gt.AutomaticSize = Enum.AutomaticSize.Y
+			gt.BackgroundTransparency = 1
+			gt.Text = tostring(text)
+			gt.Font = Enum.Font.Gotham
+			gt.TextSize = 12
+			gt.TextColor3 = THEME.green
+			gt.TextWrapped = true
+			gt.TextXAlignment = Enum.TextXAlignment.Left
+			gt.ZIndex = 5
+			gt.Parent = g
+			return g
+		end
+
+		function Tab:Toggle(opts)
+			opts = opts or {}
+			local nameT = opts.Name or opts.Title or "Toggle"
+			local default = opts.Default or false
+			local flag = opts.Flag
+			local cb = opts.Callback
+
+			local card = addCard()
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, 0, 0, 28)
+			row.BackgroundTransparency = 1
+			row.ZIndex = 5
+			row.Parent = card
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, -56, 1, 0)
+			lbl.BackgroundTransparency = 1
+			lbl.Text = nameT
+			lbl.Font = Enum.Font.GothamMedium
+			lbl.TextSize = 13
+			lbl.TextColor3 = THEME.text
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.ZIndex = 6
+			lbl.Parent = row
+
+			local state = default
+			local switch = Instance.new("TextButton")
+			switch.Size = UDim2.new(0, 46, 0, 24)
+			switch.Position = UDim2.new(1, -46, 0.5, -12)
+			switch.BackgroundColor3 = state and THEME.accent or THEME.off
+			switch.Text = ""
+			switch.ZIndex = 6
+			switch.Parent = row
+			corner(switch, 12)
+
+			local knob = Instance.new("Frame")
+			knob.Size = UDim2.new(0, 18, 0, 18)
+			knob.Position = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+			knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			knob.ZIndex = 7
+			knob.Parent = switch
+			corner(knob, 9)
+
+			local function apply(v, silent)
+				state = v
+				TweenService:Create(switch, TweenInfo.new(0.15), {
+					BackgroundColor3 = state and THEME.accent or THEME.off
+				}):Play()
+				TweenService:Create(knob, TweenInfo.new(0.15), {
+					Position = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+				}):Play()
+				if flag then Window._configFlags[flag] = state end
+				if not silent then
+					pushToast(ToastHost, nameT, state)
+				end
+				if cb then pcall(cb, state) end
+			end
+
+			switch.MouseButton1Click:Connect(function()
+				apply(not state, false)
+			end)
+
+			if flag then Window._configFlags[flag] = state end
+			return {
+				Set = function(_, v) apply(v, true) end,
+				Get = function() return state end,
+			}
+		end
+
+		function Tab:Button(opts)
+			opts = opts or {}
+			local nameB = opts.Name or opts.Title or "Button"
+			local cb = opts.Callback
+			local card = addCard()
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.new(1, 0, 0, 32)
+			b.BackgroundColor3 = THEME.accent2
+			b.Text = nameB
+			b.Font = Enum.Font.GothamBold
+			b.TextSize = 13
+			b.TextColor3 = THEME.text
+			b.ZIndex = 5
+			b.Parent = card
+			corner(b, 8)
+			b.MouseButton1Click:Connect(function()
+				pushToast(ToastHost, nameB .. " clicked", true)
+				if cb then pcall(cb) end
+			end)
+			return b
+		end
+
+		function Tab:Slider(opts)
+			opts = opts or {}
+			local nameS = opts.Name or opts.Title or "Slider"
+			local minV = opts.Min or 0
+			local maxV = opts.Max or 100
+			local default = opts.Default or minV
+			local flag = opts.Flag
+			local cb = opts.Callback
+			local value = default
+
+			local card = addCard()
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, 0, 0, 18)
+			lbl.BackgroundTransparency = 1
+			lbl.Text = nameS .. ": " .. tostring(value)
+			lbl.Font = Enum.Font.GothamMedium
+			lbl.TextSize = 12
+			lbl.TextColor3 = THEME.text
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.ZIndex = 5
+			lbl.Parent = card
+
+			local barBg = Instance.new("Frame")
+			barBg.Size = UDim2.new(1, 0, 0, 8)
+			barBg.BackgroundColor3 = THEME.off
+			barBg.BorderSizePixel = 0
+			barBg.ZIndex = 5
+			barBg.Parent = card
+			corner(barBg, 4)
+
+			local fill = Instance.new("Frame")
+			fill.Size = UDim2.new((value - minV) / math.max(maxV - minV, 1), 0, 1, 0)
+			fill.BackgroundColor3 = THEME.accent
+			fill.BorderSizePixel = 0
+			fill.ZIndex = 6
+			fill.Parent = barBg
+			corner(fill, 4)
+
+			local sliding = false
+			local function setFromX(x)
+				local rel = math.clamp((x - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
+				value = math.floor(minV + rel * (maxV - minV) + 0.5)
+				fill.Size = UDim2.new(rel, 0, 1, 0)
+				lbl.Text = nameS .. ": " .. tostring(value)
+				if flag then Window._configFlags[flag] = value end
+				if cb then pcall(cb, value) end
+			end
+
+			barBg.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					sliding = true
+					setFromX(input.Position.X)
+				end
+			end)
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					sliding = false
+				end
+			end)
+			UserInputService.InputChanged:Connect(function(input)
+				if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					setFromX(input.Position.X)
+				end
+			end)
+
+			if flag then Window._configFlags[flag] = value end
+			return {
+				Set = function(_, v)
+					value = math.clamp(v, minV, maxV)
+					local rel = (value - minV) / math.max(maxV - minV, 1)
+					fill.Size = UDim2.new(rel, 0, 1, 0)
+					lbl.Text = nameS .. ": " .. tostring(value)
+					if flag then Window._configFlags[flag] = value end
+				end,
+				Get = function() return value end,
+			}
+		end
+
+		function Tab:Dropdown(opts)
+			opts = opts or {}
+			local nameD = opts.Name or opts.Title or "Dropdown"
+			local options = opts.Options or {}
+			local default = opts.Default or options[1]
+			local flag = opts.Flag
+			local cb = opts.Callback
+			local selected = default
+
+			local card = addCard()
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, 0, 0, 16)
+			lbl.BackgroundTransparency = 1
+			lbl.Text = nameD
+			lbl.Font = Enum.Font.GothamMedium
+			lbl.TextSize = 12
+			lbl.TextColor3 = THEME.dim
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.ZIndex = 5
+			lbl.Parent = card
+
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, 0, 0, 30)
+			btn.BackgroundColor3 = THEME.element
+			btn.Text = "  " .. tostring(selected) .. "  ▼"
+			btn.Font = Enum.Font.Gotham
+			btn.TextSize = 12
+			btn.TextColor3 = THEME.text
+			btn.TextXAlignment = Enum.TextXAlignment.Left
+			btn.ZIndex = 5
+			btn.Parent = card
+			corner(btn, 6)
+
+			local open = false
+			local listFrame = Instance.new("Frame")
+			listFrame.Size = UDim2.new(1, 0, 0, 0)
+			listFrame.AutomaticSize = Enum.AutomaticSize.Y
+			listFrame.BackgroundColor3 = THEME.element
+			listFrame.Visible = false
+			listFrame.ZIndex = 10
+			listFrame.Parent = card
+			corner(listFrame, 6)
+			listLayout(listFrame, Enum.FillDirection.Vertical, 2)
+			pad(listFrame, 4, 4, 4, 4)
+
+			local function pick(v)
+				selected = v
+				btn.Text = "  " .. tostring(selected) .. "  ▼"
+				listFrame.Visible = false
+				open = false
+				if flag then Window._configFlags[flag] = selected end
+				pushToast(ToastHost, nameD .. ": " .. tostring(selected), true)
+				if cb then pcall(cb, selected) end
+			end
+
+			for _, opt in ipairs(options) do
+				local o = Instance.new("TextButton")
+				o.Size = UDim2.new(1, 0, 0, 26)
+				o.BackgroundColor3 = THEME.card
+				o.Text = "  " .. tostring(opt)
+				o.Font = Enum.Font.Gotham
+				o.TextSize = 12
+				o.TextColor3 = THEME.text
+				o.TextXAlignment = Enum.TextXAlignment.Left
+				o.ZIndex = 11
+				o.Parent = listFrame
+				corner(o, 4)
+				o.MouseButton1Click:Connect(function() pick(opt) end)
+			end
+
+			btn.MouseButton1Click:Connect(function()
+				open = not open
+				listFrame.Visible = open
+			end)
+
+			if flag then Window._configFlags[flag] = selected end
+			return {
+				Set = function(_, v) pick(v) end,
+				Get = function() return selected end,
+			}
+		end
+
+		function Tab:Textbox(opts)
+			opts = opts or {}
+			local nameX = opts.Name or opts.Title or "Input"
+			local placeholder = opts.Placeholder or ""
+			local flag = opts.Flag
+			local cb = opts.Callback
+			local card = addCard()
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, 0, 0, 16)
+			lbl.BackgroundTransparency = 1
+			lbl.Text = nameX
+			lbl.Font = Enum.Font.GothamMedium
+			lbl.TextSize = 12
+			lbl.TextColor3 = THEME.dim
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.ZIndex = 5
+			lbl.Parent = card
+
+			local box = Instance.new("TextBox")
+			box.Size = UDim2.new(1, 0, 0, 30)
+			box.BackgroundColor3 = THEME.element
+			box.PlaceholderText = placeholder
+			box.PlaceholderColor3 = THEME.mute
+			box.Text = opts.Default or ""
+			box.TextColor3 = THEME.text
+			box.Font = Enum.Font.Gotham
+			box.TextSize = 12
+			box.ClearTextOnFocus = false
+			box.ZIndex = 5
+			box.Parent = card
+			corner(box, 6)
+			pad(box, 0, 0, 8, 8)
+
+			box.FocusLost:Connect(function(enter)
+				if flag then Window._configFlags[flag] = box.Text end
+				if cb then pcall(cb, box.Text, enter) end
+			end)
+			return box
+		end
+
+		return Tab
+	end
+
+	--==========================================================
+	-- CONFIG TAB (MM2 style)
+	--==========================================================
+	function Window:CreateConfigTab(opts)
+		opts = opts or {}
+		local tab = self:CreateTab({
+			Name = opts.Name or "Config",
+			Icon = opts.Icon or "save",
+			Order = opts.Order or 99,
+			NoGreen = true,
+		})
+
+		tab:Label("Save / Load / Delete configs (executor writefile)")
+
+		local cfgName = "default"
+		local nameBox = tab:Textbox({
+			Name = "Config name",
+			Placeholder = "default",
+			Default = "default",
+			Callback = function(t)
+				cfgName = (t and t:gsub("%s+", "") ~= "") and t:gsub("%s+", "") or "default"
+			end,
+		})
+
+		tab:Button({
+			Name = "Save Config",
+			Callback = function()
+				pcall(function()
+					if isfolder and not isfolder(folder) then makefolder(folder) end
+					if writefile then
+						writefile(folder .. "/" .. cfgName .. ".json", HttpService:JSONEncode({
+							savedAt = os.date("%c"),
+							name = cfgName,
+							flags = Window._configFlags,
+						}))
+					end
+				end)
+				Window:Notify("Saved: " .. cfgName, true)
+			end,
+		})
+
+		tab:Button({
+			Name = "Load Config",
+			Callback = function()
+				local ok, data = pcall(function()
+					return HttpService:JSONDecode(readfile(folder .. "/" .. cfgName .. ".json"))
+				end)
+				if ok and type(data) == "table" and type(data.flags) == "table" then
+					for k, v in pairs(data.flags) do
+						Window._configFlags[k] = v
+					end
+					Window:Notify("Loaded: " .. cfgName, true)
+				else
+					Window:Notify("Load failed: " .. cfgName, false)
+				end
+			end,
+		})
+
+		tab:Button({
+			Name = "Delete Config",
+			Callback = function()
+				pcall(function()
+					if delfile then delfile(folder .. "/" .. cfgName .. ".json") end
+				end)
+				Window:Notify("Deleted: " .. cfgName, false)
+			end,
+		})
+
+		return tab
+	end
+
+	function Window:SelectTab(name)
+		if Window._pages[name] then setActiveTab(name) end
+	end
+
+	function Window:SetVisible(v) setVisible(v) end
+
+	-- Select first tab after short delay
+	task.defer(function()
+		if #Window._tabs > 0 then
+			setActiveTab(Window._tabs[1])
+		end
+	end)
+
+	return Window
+end
+
+-- Register custom icon
+function KHUB:AddIcon(name, assetId)
+	KHUB.Icons[string.lower(name)] = assetId
+end
+
+print("[KHUB UI Library] v" .. KHUB.Version .. " loaded")
+return KHUB

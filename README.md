@@ -47,6 +47,7 @@ Khub UI Library includes a complete set of UI elements:
 ## ⚡ Installation
 
 **Load the library:**
+```
 
 
  khub library:

@@ -267,23 +267,6 @@ Library Methods
 
 ---
 
-🔑 Key System
-
-The Khub key system is built into the library. When enabled, users must enter a valid key before the hub loads.
-
-```lua
-Window:CreateKeySystem({
-    Title       = "Khub Key System",
-    Subtitle    = "Enter your key to continue",
-    Placeholder = "Paste your key...",
-    Key         = "KHUB-XXXX-XXXX",
-    GetLink     = "https://discord.gg/DghhdTkGft",
-    OnSuccess   = function()
-        loadstring(game:HttpGet("https://your-script-url.lua"))()
-    end,
-})
-```
-
 ---
 
 🪐 Floating Orb
